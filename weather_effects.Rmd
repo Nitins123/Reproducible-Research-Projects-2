@@ -1,0 +1,197 @@
+# Reproducible Research: Peer Assessment 2
+Author: Nitin sethi
+Dec 20th 2016
+
+## The effects of weather events on the United States public heath and economically
+
+### Synopsis
+The goal of this data analysis is to determine the more impactful types of
+weather on the United States human population and economically between
+1950-2011. I used injuries and fatalities to classify weather events that
+affected population health most. I used property and crop damage to determine
+which weather events were most economically impactful.
+
+### Data Processing
+The storm data is downloadable [Here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) [47Mb] and unzipped with bunzip2.
+
+#### Basic Setup
+```{r echo=TRUE}
+echo=TRUE # Echo all code segments
+options(scipen = 12)
+library(R.utils)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+#### Downloand & unzip file
+```{r cache = TRUE}
+if(!file.exists('stormData.csv')) {
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "stormData.csv.bz2", method = 'curl')
+  bunzip2("stormData.csv.bz2")
+}
+```
+
+#### Load data
+```{r cache = TRUE}
+stormData <- read.csv('stormData.csv', stringsAsFactors = FALSE)
+dim(stormData)
+names(stormData)
+```
+
+
+#### Drop unused columns
+```{r}
+importantCols <- c("EVTYPE", "INJURIES", "FATALITIES", "PROPDMG", "PROPDMGEXP",
+                   "CROPDMG", "CROPDMGEXP")
+stormData <- stormData[importantCols]
+dim(stormData)
+```
+
+#### Convert damage amounts into dollars
+```{r}
+convertMagnitude <- function(x) {
+  if (x == '') {
+    return(0)
+  }
+
+  switch(toupper(x),
+          '?' = 0,
+          '-' = NA,
+          '+' = NA,
+          'H' = 2,
+          'K' = 3,
+          'M' = 6,
+          'B' = 9,
+          x)
+}
+
+stormData$PROPDMGEXP <- sapply(as.character(stormData$PROPDMGEXP),
+                               convertMagnitude)
+stormData$PROPDMGEXP <- as.numeric(stormData$PROPDMGEXP)
+
+stormData$PROPDMG <- stormData$PROPDMG * 10^stormData$PROPDMGEXP
+
+stormData$CROPDMGEXP <- sapply(as.character(stormData$CROPDMGEXP),
+                               convertMagnitude)
+stormData$CROPDMGEXP <- as.numeric(stormData$CROPDMGEXP)
+
+stormData$CROPDMG <- stormData$CROPDMG * 10^stormData$CROPDMGEXP
+
+
+stormData$PROPDMGEXP <- NULL
+stormData$CROPDMGEXP <- NULL
+
+
+summary(stormData)
+```
+
+#### Group weather event types
+
+There are many duplicated weather event types in the data, so I grouped similar
+types of events and cleaned up type names.
+```{r}
+eventTypes <- levels(factor(stormData$EVTYPE))
+length(eventTypes)
+```
+
+```{r}
+stormData[grep('cold|freez|ice|winter|blizzard|snow|wintry|icy',
+               stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'COLD WEATHER'
+stormData[grep('heat|hot|warm|dry', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'HEAT'
+stormData[grep('wind|wnd', stormData$EVTYPE,
+               ignore.case = TRUE),]$EVTYPE = 'WIND'
+stormData[grep('tornado|waterspout|funnel', stormData$EVTYPE,
+               ignore.case = TRUE),]$EVTYPE = 'TORNADO'
+stormData[grep('flooding|flood|rain|wet', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'FLOODING'
+stormData[grep('dry|drought', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'DROUGHT'
+stormData[grep('fire', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'WILD FIRE'
+stormData[grep('hurricane|typhoon|surge', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'HURRICANE'
+stormData[grep('tropical', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'TROPICAL STORM'
+stormData[grep('surf|current|wave', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'SURF'
+stormData[grep('lightning', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'LIGHTNING'
+stormData[grep('hail', stormData$EVTYPE,
+               ignore.case=TRUE),]$EVTYPE = 'HAIL'
+eventTypes <- levels(factor(stormData$EVTYPE))
+length(eventTypes)
+```
+
+### Data Analysis
+
+I group the data by weather event types, sum the classifiers 
+(FATALITIES, INJURIES) & (PROPDMG, CROPDMG), and sum the sum of the classifiers
+which created a total impact for the weather type. I then order the weather 
+types by their total impact descending.
+
+#### Determine the most impactful storm events on the human population
+```{r}
+healthImpactData <- group_by(stormData, EVTYPE) %>%
+    summarize(Deaths=sum(FATALITIES), Injuries=sum(INJURIES),
+              Total=sum(INJURIES)+sum(FATALITIES)) %>%
+    gather(Impact, ImpactTotal, -EVTYPE, -Total) %>%
+    arrange(desc(Total))
+healthImpactData <- healthImpactData[1:20,]
+head(healthImpactData, n = 20)
+
+```
+
+#### Determine the storm events with the largest economic impact
+```{r}
+economicImpactData <- group_by(stormData, EVTYPE) %>%
+    summarize(Property=sum(PROPDMG), Crop=sum(CROPDMG),
+              Total=sum(PROPDMG)+sum(CROPDMG)) %>%
+    gather(Impact, ImpactTotal, -EVTYPE, -Total) %>%
+    arrange(desc(Total))
+economicImpactData <- economicImpactData[1:20,]
+head(economicImpactData, n = 20)
+```
+
+### Results
+
+#### Impact on human population of the United States
+
+The most impactful weather events that affect population health are tornadoes,
+wind, heat, flooding, cold weather, and lightning. Tornadoes are a by far the
+leading weather related cause for injuries and death in the United States from
+1950-2011.
+
+```{r}
+# reorder event types for graph order
+eventHealthTypes <- reorder(healthImpactData$EVTYPE, -healthImpactData$Total)
+
+ggplot(healthImpactData, aes(x=eventHealthTypes, y=ImpactTotal/10^3,
+                             fill=Impact)) +
+  geom_bar(position="stack", stat="identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(title = "Worst Weather related Fatalities and Injuries in the US 1950-2011",
+       x = "Weather Event Type", y = "Total Impact (in thousands)")
+```
+
+#### Greatest economic consequences
+
+The weather events that caused the greatest economic consequences are
+hurricanes, cold winter weather, hail, drought, wild fires and tropical storms.
+Hurricanes are the main weather related cause of economic destruction,
+predominately property damage.  The leading cause of crop damage is drought, but
+barely compares to the total economic impact by hurricanes.
+
+```{r}
+# reorder event types for graph order
+eventEconTypes <- reorder(economicImpactData$EVTYPE, -economicImpactData$Total)
+
+ggplot(economicImpactData, aes(x=eventEconTypes, y=ImpactTotal/10^9,
+                               fill=Impact)) +
+  geom_bar(position="stack", stat="identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(title = "Worst Weather related Property & Crop Damage in the US 1950-2011",
+       x = "Weather Event Type", y = "Total Damage (Billions of dollars)")
+```
